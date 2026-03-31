@@ -1,0 +1,126 @@
+# Project N.O.M.A.D. — Local Development Docker Compose
+#
+# Usage:
+#   docker compose up -d --build
+#
+# Access at: https://nomad.local
+# (Requires /etc/hosts entry: 127.0.0.1 nomad.local)
+# (Requires mkcert certs in ./certs/)
+#
+# Log viewer: http://nomad.local:9999
+
+name: project-nomad
+
+services:
+  traefik:
+    image: traefik:v3.3
+    container_name: nomad_traefik
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--providers.file.filename=/etc/traefik/dynamic.yml"
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./certs:/etc/traefik/certs:ro
+      - ./certs/traefik-dynamic.yml:/etc/traefik/dynamic.yml:ro
+
+  admin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nomad_admin
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.admin.rule=Host(`nomad.local`)"
+      - "traefik.http.routers.admin.entrypoints=websecure"
+      - "traefik.http.routers.admin.tls=true"
+      - "traefik.http.services.admin.loadbalancer.server.port=8080"
+    volumes:
+      - ${NOMAD_STORAGE_PATH:-/opt/project-nomad/storage}:/app/storage
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - NODE_ENV=production
+      - PORT=8080
+      - HOST=0.0.0.0
+      - LOG_LEVEL=info
+      - APP_KEY=local-dev-key-change-me-1234
+      - URL=https://nomad.local
+      - NOMAD_STORAGE_PATH=${NOMAD_STORAGE_PATH:-/opt/project-nomad/storage}
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_DATABASE=nomad
+      - DB_USER=nomad_user
+      - DB_PASSWORD=nomad_local_pass
+      - DB_NAME=nomad
+      - DB_SSL=false
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  mysql:
+    image: mysql:8.0
+    container_name: nomad_mysql
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=nomad_root_pass
+      - MYSQL_DATABASE=nomad
+      - MYSQL_USER=nomad_user
+      - MYSQL_PASSWORD=nomad_local_pass
+    volumes:
+      - nomad-mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: nomad_redis
+    restart: unless-stopped
+    volumes:
+      - ${NOMAD_STORAGE_PATH:-/opt/project-nomad/storage}/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  dozzle:
+    image: amir20/dozzle:v10.0
+    container_name: nomad_dozzle
+    restart: unless-stopped
+    ports:
+      - "9999:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DOZZLE_ENABLE_ACTIONS=false
+      - DOZZLE_ENABLE_SHELL=false
+
+volumes:
+  nomad-mysql:
+    name: project-nomad_nomad-mysql
+    external: true
+  nomad-nominatim:
+    name: project-nomad_nomad-nominatim
+    external: true

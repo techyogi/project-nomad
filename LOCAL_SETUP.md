@@ -29,6 +29,50 @@ Browser (HTTPS) → Traefik (:443) → Admin (:8080) → MySQL/Redis
                                   → Ollama, Qdrant, Kiwix (managed via Docker socket)
 ```
 
+## Data Storage
+
+ALL data lives in `storage/`. This is the single source of truth.
+
+| Data | Path | Size |
+|------|------|------|
+| ZIM files | `storage/zim/` | ~133GB |
+| Maps + assets | `storage/maps/` | ~15GB |
+| Ollama models | `storage/ollama/` | ~12GB |
+| Kolibri education | `storage/kolibri/` | ~11GB |
+| Nominatim (PostgreSQL) | `storage/nominatim/` | ~29GB |
+| Qdrant vectors | `storage/qdrant/` | ~360MB |
+| MySQL | `storage/mysql/` | ~200MB |
+| Redis | `storage/redis/` | ~300KB |
+| FlatNotes | `storage/flatnotes/` | ~16KB |
+| KB uploads | `storage/kb_uploads/` | — |
+
+MySQL and Nominatim use Docker named volumes with bind-back to host paths
+(`docker volume create --driver local --opt type=none --opt o=bind --opt device=<path>`).
+This preserves correct filesystem permissions while keeping data on the host.
+
+## Moving to Another Machine or External SSD
+
+### Backup
+```bash
+./scripts/backup-all.sh /Volumes/MySSD/nomad-backup
+```
+Copies the entire project (code + storage + config) excluding machine-specific
+files (certs, node_modules, .git).
+
+### Restore on new machine
+```bash
+cd /path/to/nomad-backup  # or wherever you copied it
+./scripts/restore-all.sh
+```
+The restore script handles everything automatically:
+1. Updates `.env` with correct storage path
+2. Creates bind-backed Docker volumes for MySQL and Nominatim
+3. Adds `nomad.local` to `/etc/hosts` (prompts for sudo)
+4. Installs mkcert and generates TLS certificates
+5. Builds and starts all containers
+
+No imports, no re-downloads. Just copy and run the script.
+
 ## Local-Only Features
 
 ### 1. Traefik TLS Proxy
@@ -40,9 +84,8 @@ Browser (HTTPS) → Traefik (:443) → Admin (:8080) → MySQL/Redis
 ### 2. Nominatim Offline Geocoding
 - Image: `mediagis/nominatim:4.4`
 - Data: US Northeast OSM extract + TIGER addresses + US postcodes
-- Import style: `full` (includes house numbers where OSM has them)
-- TIGER fills gaps for US street-level addressing
-- Data persists in Docker volume: `nomad-nominatim-data`
+- Import style: `full` (includes house numbers via TIGER Census data)
+- Data persists in bind-backed volume at `storage/nominatim/`
 - Container name: `nomad_nominatim`, internal port 8080, host port 8400
 - API: `/api/nominatim/search?q=...`, `/api/nominatim/reverse?lat=...&lon=...`
 
@@ -67,6 +110,8 @@ admin/inertia/components/maps/MapSearchControl.tsx
 docker-compose.yml
 certs/traefik-dynamic.yml
 scripts/sync-upstream.sh
+scripts/backup-all.sh
+scripts/restore-all.sh
 LOCAL_SETUP.md
 
 # Modified files
@@ -111,10 +156,12 @@ will skip them during rebase automatically.
 ### Re-import with different region
 ```bash
 docker rm -f nomad_nominatim
+# Clear old data
+rm -rf storage/nominatim/*
 # Update PBF_URL in service DB:
 docker exec nomad_mysql mysql -u nomad_user -pnomad_local_pass nomad \
   -e "UPDATE services SET installed=0, installation_status='idle' WHERE service_name='nomad_nominatim';"
-# Then install from NOMAD UI
+# Then install from NOMAD UI — will re-import into storage/nominatim/
 ```
 
 ### Available Geofabrik US regions
@@ -124,25 +171,6 @@ docker exec nomad_mysql mysql -u nomad_user -pnomad_local_pass nomad \
 - `us-west-latest.osm.pbf` — CA, WA, OR, CO, AZ, etc.
 - Individual states: `us/new-jersey-latest.osm.pbf`, etc.
 - Full list: https://download.geofabrik.de/north-america.html
-
-### Backup Nominatim data
-```bash
-docker run --rm -v nomad-nominatim-data:/data -v $(pwd):/backup alpine \
-  tar czf /backup/nominatim-backup.tar.gz /data
-```
-
-### Restore to external SSD
-```bash
-# Create volume on SSD
-docker volume create --driver local \
-  --opt type=none --opt o=bind \
-  --opt device=/Volumes/MySSD/nominatim-data \
-  nomad-nominatim-data
-
-# Restore backup
-docker run --rm -v nomad-nominatim-data:/data -v $(pwd):/backup alpine \
-  tar xzf /backup/nominatim-backup.tar.gz -C /
-```
 
 ## Environment (.env)
 
