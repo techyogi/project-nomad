@@ -11,6 +11,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { Protocol } from 'pmtiles'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import MapSearchControl from './MapSearchControl'
+import api from '~/lib/api'
 
 interface SearchResult {
   name: string
@@ -83,20 +84,27 @@ function MapSearchInner({
   onSelect: (result: SearchResult | null) => void
 }) {
   const { 'nomad-map': map } = useMap()
+  const nominatimAvailable = useRef<boolean | null>(null)
 
-  const handleSearch = useCallback(
-    (query: string) => {
-      if (!map || !query.trim()) {
-        onResults([])
-        return
-      }
+  // Check Nominatim availability on mount
+  useEffect(() => {
+    api.nominatimStatus().then((status) => {
+      nominatimAvailable.current = status.available
+    }).catch(() => {
+      nominatimAvailable.current = false
+    })
+  }, [])
+
+  const searchViewportFeatures = useCallback(
+    (query: string): SearchResult[] => {
+      if (!map) return []
 
       const mapInstance = map.getMap()
       const results: SearchResult[] = []
       const seen = new Set<string>()
       const lowerQuery = query.toLowerCase()
 
-      // First: query rendered features (what's visible on screen)
+      // Query rendered features (visible on screen)
       const renderedFeatures = mapInstance.queryRenderedFeatures()
       for (const feature of renderedFeatures) {
         const name = feature.properties?.name || feature.properties?.['pgf:name']
@@ -134,7 +142,7 @@ function MapSearchInner({
         }
       }
 
-      // Second: also query source features from all loaded tiles
+      // Also query source features from all loaded tiles
       const sourceIds = Object.keys(mapInstance.getStyle().sources)
       for (const sourceId of sourceIds) {
         for (const sourceLayer of ['places', 'pois']) {
@@ -182,7 +190,42 @@ function MapSearchInner({
         }
       }
 
-      results.sort((a, b) => {
+      return results
+    },
+    [map]
+  )
+
+  const handleSearch = useCallback(
+    async (query: string) => {
+      if (!query.trim()) {
+        onResults([])
+        return
+      }
+
+      // Try Nominatim first for full offline geocoding
+      if (nominatimAvailable.current) {
+        try {
+          const nominatimResults = await api.nominatimSearch(query, 20)
+          if (nominatimResults.length > 0) {
+            onResults(
+              nominatimResults.map((r) => ({
+                name: r.name,
+                kind: r.displayName,
+                sourceLayer: 'nominatim',
+                coordinates: r.coordinates,
+              }))
+            )
+            return
+          }
+        } catch {
+          // Nominatim failed — fall through to viewport search
+        }
+      }
+
+      // Fallback: search visible map features
+      const viewportResults = searchViewportFeatures(query)
+
+      viewportResults.sort((a, b) => {
         const aExact = a.name.toLowerCase() === query.toLowerCase()
         const bExact = b.name.toLowerCase() === query.toLowerCase()
         if (aExact && !bExact) return -1
@@ -190,9 +233,9 @@ function MapSearchInner({
         return a.name.localeCompare(b.name)
       })
 
-      onResults(results.slice(0, 50))
+      onResults(viewportResults.slice(0, 50))
     },
-    [map, onResults]
+    [onResults, searchViewportFeatures]
   )
 
   const handleSelect = useCallback(
@@ -201,7 +244,8 @@ function MapSearchInner({
       if (map) {
         map.flyTo({
           center: result.coordinates,
-          zoom: result.kind === 'city' || result.kind === 'state' ? 10 : 14,
+          zoom: result.sourceLayer === 'nominatim' ? 14 :
+            result.kind === 'city' || result.kind === 'state' ? 10 : 14,
           duration: 1500,
         })
       }

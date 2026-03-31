@@ -159,6 +159,41 @@ export default class ServiceSeeder extends BaseSeeder {
       is_dependency_service: false,
       depends_on: null,
     },
+    {
+      service_name: SERVICE_NAMES.NOMINATIM,
+      friendly_name: 'Place Search',
+      powered_by: 'Nominatim',
+      display_order: 4,
+      description:
+        'Offline place search and geocoding powered by OpenStreetMap data',
+      icon: 'IconMapSearch',
+      container_image: 'mediagis/nominatim:4.4',
+      source_repo: 'https://github.com/mediagis/nominatim-docker',
+      container_command: null,
+      container_config: JSON.stringify({
+        HostConfig: {
+          RestartPolicy: { Name: 'unless-stopped' },
+          PortBindings: { '8080/tcp': [{ HostPort: '8400' }] },
+        },
+        ExposedPorts: { '8080/tcp': {} },
+        Env: [
+          'PBF_URL=https://download.geofabrik.de/north-america/us-northeast-latest.osm.pbf',
+          'IMPORT_STYLE=full',
+          'IMPORT_TIGER_ADDRESSES=true',
+          'IMPORT_US_POSTCODES=true',
+          'FREEZE=true',
+          'THREADS=4',
+          'POSTGRES_SHARED_BUFFERS=1GB',
+          'POSTGRES_MAINTENANCE_WORK_MEM=2GB',
+          'POSTGRES_EFFECTIVE_CACHE_SIZE=4GB',
+        ],
+      }),
+      ui_location: '8400',
+      installed: false,
+      installation_status: 'idle',
+      is_dependency_service: false,
+      depends_on: null,
+    },
   ]
 
   async run() {

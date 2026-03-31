@@ -96,6 +96,15 @@ router
   })
   .prefix('/api/downloads')
 
+const NominatimController = () => import('#controllers/nominatim_controller')
+router
+  .group(() => {
+    router.get('/status', [NominatimController, 'status'])
+    router.get('/search', [NominatimController, 'search'])
+    router.get('/reverse', [NominatimController, 'reverse'])
+  })
+  .prefix('/api/nominatim')
+
 router.get('/api/health', () => {
   return { status: 'ok' }
 })

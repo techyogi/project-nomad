@@ -563,6 +563,24 @@ class API {
     })()
   }
 
+  async nominatimStatus(): Promise<{ available: boolean }> {
+    return catchInternal(async () => {
+      const response = await this.client.get<{ available: boolean }>('/nominatim/status')
+      return response.data
+    })()
+  }
+
+  async nominatimSearch(query: string, limit: number = 10): Promise<
+    { name: string; displayName: string; type: string; coordinates: [number, number] }[]
+  > {
+    return catchInternal(async () => {
+      const response = await this.client.get('/nominatim/search', {
+        params: { q: query.replace(/,/g, ' ').replace(/\s+/g, ' ').trim(), limit },
+      })
+      return response.data
+    })()
+  }
+
   async runBenchmark(type: BenchmarkType, sync: boolean = false) {
     return catchInternal(async () => {
       const response = await this.client.post<RunBenchmarkResponse>(
