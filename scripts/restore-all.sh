@@ -91,10 +91,18 @@ done
 echo -e "${GREEN}[3/5]${NC} Checking /etc/hosts..."
 if grep -q "nomad.local" /etc/hosts; then
     echo "  nomad.local already in /etc/hosts"
+    # Ensure IPv6 entry exists (prevents 5s DNS timeout on .local domains)
+    if ! grep -q "::1.*nomad.local" /etc/hosts; then
+        echo "  Adding IPv6 entry for nomad.local (requires sudo)..."
+        sudo sed -i '' '/127.0.0.1  nomad.local/a\
+::1  nomad.local' /etc/hosts
+        echo "  Added: ::1  nomad.local"
+    fi
 else
     echo "  Adding nomad.local to /etc/hosts (requires sudo)..."
-    sudo sh -c 'echo "127.0.0.1  nomad.local" >> /etc/hosts'
+    sudo sh -c 'printf "127.0.0.1  nomad.local\n::1  nomad.local\n" >> /etc/hosts'
     echo "  Added: 127.0.0.1  nomad.local"
+    echo "  Added: ::1  nomad.local"
 fi
 
 # Step 4: TLS certificates
