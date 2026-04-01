@@ -81,13 +81,19 @@ export class NominatimService {
         timeout: 10000,
       })
 
+      // Detect if the query starts with a house number
+      const cleanQuery = query.replace(/,/g, ' ').replace(/\s+/g, ' ').trim()
+      const houseNumberMatch = cleanQuery.match(/^(\d+)\s+(.+)/)
+      const queryHouseNumber = houseNumberMatch ? houseNumberMatch[1] : null
+
       return response.data.map((result) => {
-        // Build a concise name from address parts when available
         let name = result.display_name.split(',')[0]
         if (result.address) {
           const a = result.address
           const parts = []
+          // Use house_number from Nominatim if available, otherwise use the one from the query
           if (a.house_number) parts.push(a.house_number)
+          else if (queryHouseNumber && a.road) parts.push(queryHouseNumber)
           if (a.road) parts.push(a.road)
           if (parts.length > 0) {
             name = parts.join(' ')
