@@ -30,4 +30,9 @@ sed -i 's|^set -ex$|set -x|g' /app/init.sh /app/start.sh
 mkdir -p /var/log/postgresql
 chown postgres:postgres /var/log/postgresql
 
+# Enable TIGER address data in Nominatim config (must be set every start since
+# /nominatim/.env is in the container writable layer, not the bind-backed volume)
+grep -q "NOMINATIM_USE_US_TIGER_DATA" /nominatim/.env 2>/dev/null || \
+  echo "NOMINATIM_USE_US_TIGER_DATA=yes" >> /nominatim/.env
+
 exec /app/start.sh
