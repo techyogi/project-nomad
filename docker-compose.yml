@@ -123,4 +123,3 @@ volumes:
     external: true
   nomad-nominatim:
     name: project-nomad_nomad-nominatim
-    external: true

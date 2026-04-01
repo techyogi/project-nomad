@@ -173,6 +173,7 @@ export default class ServiceSeeder extends BaseSeeder {
       container_config: JSON.stringify({
         HostConfig: {
           RestartPolicy: { Name: 'unless-stopped' },
+          Binds: ['project-nomad_nomad-nominatim:/var/lib/postgresql/16/main'],
           PortBindings: { '8080/tcp': [{ HostPort: '8400' }] },
         },
         ExposedPorts: { '8080/tcp': {} },
