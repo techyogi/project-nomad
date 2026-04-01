@@ -4,6 +4,7 @@ import Map, {
   NavigationControl,
   MapProvider,
   Marker,
+  Popup,
   useMap,
 } from 'react-map-gl/maplibre'
 import maplibregl from 'maplibre-gl'
@@ -58,11 +59,26 @@ export default function MapComponent() {
           style={{ marginTop: '190px', marginRight: '36px' }}
         />
         {selectedResult && (
-          <Marker
-            longitude={selectedResult.coordinates[0]}
-            latitude={selectedResult.coordinates[1]}
-            color="#ef4444"
-          />
+          <>
+            <Marker
+              longitude={selectedResult.coordinates[0]}
+              latitude={selectedResult.coordinates[1]}
+              color="#ef4444"
+            />
+            <Popup
+              longitude={selectedResult.coordinates[0]}
+              latitude={selectedResult.coordinates[1]}
+              anchor="bottom"
+              offset={[0, -35]}
+              closeButton={false}
+              className="nominatim-popup"
+            >
+              <div className="text-sm font-medium text-gray-900">{selectedResult.name}</div>
+              {selectedResult.sourceLayer === 'nominatim' && (
+                <div className="text-xs text-gray-500">{selectedResult.kind}</div>
+              )}
+            </Popup>
+          </>
         )}
         <MapSearchInner
           onResults={setSearchResults}
