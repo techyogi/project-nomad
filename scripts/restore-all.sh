@@ -10,6 +10,7 @@
 #   3. Add nomad.local to /etc/hosts (if not already present)
 #   4. Install mkcert and generate TLS certificates (if needed)
 #   5. Build and start all containers
+#   6. Rewrite absolute paths in managed container configs to match new location
 #
 # Prerequisites:
 #   - Docker is running
@@ -144,9 +145,31 @@ TRAEFIK
 fi
 
 # Step 5: Build and start
-echo -e "${GREEN}[5/5]${NC} Building and starting containers..."
+echo -e "${GREEN}[5/6]${NC} Building and starting containers..."
 cd "$PROJECT_DIR"
 docker compose up -d --build
+
+# Step 6: Update bind mount paths in managed container configs
+# The DB stores absolute host paths in container_config.HostConfig.Binds.
+# These are baked in at seed/install time. If the project moved, they're stale.
+echo -e "${GREEN}[6/6]${NC} Updating managed container bind paths in database..."
+sleep 10  # wait for MySQL to be healthy
+
+# Find the old storage path from any existing bind mount in the DB
+OLD_PATH=$(docker exec nomad_mysql mysql -u nomad_user -pnomad_local_pass nomad -sNe \
+  "SELECT JSON_UNQUOTE(JSON_EXTRACT(container_config, '$.HostConfig.Binds[0]')) FROM services WHERE container_config IS NOT NULL AND JSON_LENGTH(JSON_EXTRACT(container_config, '$.HostConfig.Binds')) > 0 LIMIT 1;" 2>/dev/null | cut -d: -f1 | xargs dirname 2>/dev/null || echo "")
+
+if [ -n "$OLD_PATH" ] && [ "$OLD_PATH" != "$STORAGE_PATH" ]; then
+    echo "  Old path: $OLD_PATH"
+    echo "  New path: $STORAGE_PATH"
+    # Also update the install/ path (used by nominatim entrypoint)
+    OLD_PROJECT=$(dirname "$OLD_PATH")
+    docker exec nomad_mysql mysql -u nomad_user -pnomad_local_pass nomad -e \
+      "UPDATE services SET container_config = REPLACE(container_config, '${OLD_PROJECT}/', '${PROJECT_DIR}/') WHERE container_config LIKE '%${OLD_PROJECT}%';" 2>/dev/null
+    echo "  Updated all container configs"
+else
+    echo "  Paths already correct (or no managed containers installed)"
+fi
 
 echo ""
 echo -e "${GREEN}=== Restore complete ===${NC}"
