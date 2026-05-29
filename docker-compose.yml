@@ -35,6 +35,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    # Dual-mode image reference. `docker compose up -d --build` builds from source
+    # and tags the result as this image. The in-app self-update instead pins
+    # NOMAD_VERSION in .env and pulls the published image. Defaults to :latest so a
+    # fresh checkout can `up` without building.
+    image: ghcr.io/crosstalk-solutions/project-nomad:${NOMAD_VERSION:-latest}
     container_name: nomad_admin
     restart: unless-stopped
     extra_hosts:
@@ -48,6 +53,7 @@ services:
     volumes:
       - ${NOMAD_STORAGE_PATH:-/opt/project-nomad/storage}:/app/storage
       - /var/run/docker.sock:/var/run/docker.sock
+      - nomad-update-shared:/app/update-shared # Shared volume for self-update communication with the updater sidecar
     environment:
       - NODE_ENV=production
       - PORT=8080
@@ -116,4 +122,32 @@ services:
     environment:
       - DOZZLE_ENABLE_ACTIONS=false
       - DOZZLE_ENABLE_SHELL=false
+
+  updater:
+    # Lightweight sidecar that performs in-app self-updates. The admin container
+    # drops an update request on the shared volume; this watcher pulls the target
+    # image and recreates the admin container via the host Docker daemon.
+    #
+    # Built from source here (rather than the published image) so local changes to
+    # update-watcher.sh take effect immediately. The env vars below point the watcher
+    # at this dev stack's compose file and ask it to persist the target tag to .env
+    # (NOMAD_VERSION) instead of rewriting the version-controlled compose file.
+    build:
+      context: ./install/sidecar-updater
+    image: ghcr.io/crosstalk-solutions/project-nomad-sidecar-updater:${NOMAD_VERSION:-latest}
+    container_name: nomad_updater
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock # Drives the host Docker daemon to pull & recreate containers
+      - ./:/workspace # Provides the compose file + .env so the watcher can pull and recreate
+      - nomad-update-shared:/shared # Shared volume for communication with the admin container
+    environment:
+      - COMPOSE_FILE=/workspace/docker-compose.yml
+      - COMPOSE_PROJECT_NAME=project-nomad
+      - VERSION_ENV_FILE=/workspace/.env # Persist the target tag as NOMAD_VERSION here instead of editing compose.yml
+      - SERVICES_TO_UPDATE=admin # Only the admin image carries a NOMAD version; leave pinned third-party services alone
+
+volumes:
+  nomad-update-shared:
+    driver: local
 
