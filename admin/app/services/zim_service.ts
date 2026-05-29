@@ -386,6 +386,17 @@ export class ZimService {
     const options = await this.getWikipediaOptions()
     const selection = await this.getWikipediaSelection()
 
+    // Reconcile: if status is failed/downloading but the file exists on disk, mark as installed
+    if (selection && (selection.status === 'failed' || selection.status === 'downloading') && selection.filename) {
+      const filePath = join(process.cwd(), ZIM_STORAGE_PATH, selection.filename)
+      const stats = await getFileStatsIfExists(filePath)
+      if (stats && stats.size > 0) {
+        selection.status = 'installed'
+        await selection.save()
+        logger.info(`[ZimService] Reconciled Wikipedia status to installed (file exists on disk): ${selection.filename}`)
+      }
+    }
+
     return {
       options,
       currentSelection: selection

@@ -220,12 +220,14 @@ export class CollectionManifestService {
 
       for (const file of zimFiles) {
         console.log(`Processing ZIM file: ${file.name}`)
-        // Skip Wikipedia files (managed by WikipediaSelection model)
-        if (file.name.startsWith('wikipedia_en_')) continue
 
         const parsed = CollectionManifestService.parseZimFilename(file.name)
         console.log(`Parsed ZIM filename:`, parsed)
         if (!parsed) continue
+
+        // Skip top-level Wikipedia selections (managed by WikipediaSelection model),
+        // but keep category-spec Wikipedia resources like wikipedia_en_medicine_maxi.
+        if (file.name.startsWith('wikipedia_en_') && !specResourceMap.has(parsed.resource_id)) continue
 
         seenZimIds.add(parsed.resource_id)
 

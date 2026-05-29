@@ -928,6 +928,10 @@ export class DockerService {
         ExposedPorts: inspectData.Config?.ExposedPorts || undefined,
         WorkingDir: inspectData.Config?.WorkingDir || undefined,
         User: inspectData.Config?.User || undefined,
+        Labels: {
+          ...(inspectData.Config?.Labels || {}),
+          'com.docker.compose.project': 'project-nomad',
+        },
         HostConfig: {
           Binds: hostConfig.Binds || undefined,
           PortBindings: hostConfig.PortBindings || undefined,
