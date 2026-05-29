@@ -8,14 +8,19 @@
 # Fix 1: Replace 'service postgresql start/stop' with pg_ctl (skips ownership check)
 cat > /usr/local/bin/pg-start-wrapper <<'WRAPPER'
 #!/bin/bash
+# Detect PostgreSQL version dynamically
+PG_VERSION=$(ls /usr/lib/postgresql/ | sort -n | tail -1)
+PG_BIN="/usr/lib/postgresql/${PG_VERSION}/bin/pg_ctl"
+PG_DATA="/var/lib/postgresql/${PG_VERSION}/main"
+PG_CONF="/etc/postgresql/${PG_VERSION}/main/postgresql.conf"
 if [ "$1" = "start" ]; then
-    su postgres -c "/usr/lib/postgresql/14/bin/pg_ctl start -D /var/lib/postgresql/14/main -l /var/log/postgresql/pg.log -o '-c config_file=/etc/postgresql/14/main/postgresql.conf'"
+    su postgres -c "${PG_BIN} start -D ${PG_DATA} -l /var/log/postgresql/pg.log -o '-c config_file=${PG_CONF}'"
     for i in $(seq 1 30); do
         [ -S /var/run/postgresql/.s.PGSQL.5432 ] && break
         sleep 1
     done
 elif [ "$1" = "stop" ]; then
-    su postgres -c "/usr/lib/postgresql/14/bin/pg_ctl stop -D /var/lib/postgresql/14/main -m fast" 2>/dev/null
+    su postgres -c "${PG_BIN} stop -D ${PG_DATA} -m fast" 2>/dev/null
 fi
 WRAPPER
 chmod +x /usr/local/bin/pg-start-wrapper

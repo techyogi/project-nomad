@@ -56,40 +56,8 @@ NOMAD_STORAGE_PATH=$STORAGE_PATH
 EOF
 echo "  NOMAD_STORAGE_PATH=$STORAGE_PATH"
 
-# Step 2: Create bind-backed Docker volumes
-echo -e "${GREEN}[2/5]${NC} Creating Docker volumes..."
-for vol in mysql nominatim; do
-    VOLUME_NAME="project-nomad_nomad-$vol"
-    DEVICE_PATH="$STORAGE_PATH/$vol"
-
-    if [ ! -d "$DEVICE_PATH" ]; then
-        echo -e "  ${YELLOW}Skipping $vol — $DEVICE_PATH does not exist${NC}"
-        continue
-    fi
-
-    # Remove existing volume if it points somewhere else
-    if docker volume inspect "$VOLUME_NAME" &>/dev/null; then
-        EXISTING_DEVICE=$(docker volume inspect "$VOLUME_NAME" --format '{{index .Options "device"}}' 2>/dev/null || echo "")
-        if [ "$EXISTING_DEVICE" = "$DEVICE_PATH" ]; then
-            echo "  $vol — volume already exists and points to correct path"
-            continue
-        else
-            echo "  $vol — removing existing volume (pointed to $EXISTING_DEVICE)"
-            docker volume rm "$VOLUME_NAME" 2>/dev/null || true
-        fi
-    fi
-
-    docker volume create \
-        --driver local \
-        --opt type=none \
-        --opt o=bind \
-        --opt device="$DEVICE_PATH" \
-        "$VOLUME_NAME" >/dev/null
-    echo "  Created $VOLUME_NAME → $DEVICE_PATH"
-done
-
-# Step 3: /etc/hosts
-echo -e "${GREEN}[3/5]${NC} Checking /etc/hosts..."
+# Step 2: /etc/hosts
+echo -e "${GREEN}[2/4]${NC} Checking /etc/hosts..."
 if grep -q "nomad.local" /etc/hosts; then
     echo "  nomad.local already in /etc/hosts"
     # Ensure IPv6 entry exists (prevents 5s DNS timeout on .local domains)
@@ -106,8 +74,8 @@ else
     echo "  Added: ::1  nomad.local"
 fi
 
-# Step 4: TLS certificates
-echo -e "${GREEN}[4/5]${NC} Setting up TLS certificates..."
+# Step 3: TLS certificates
+echo -e "${GREEN}[3/4]${NC} Setting up TLS certificates..."
 if [ -f "$PROJECT_DIR/certs/nomad.local.pem" ] && [ -f "$PROJECT_DIR/certs/nomad.local-key.pem" ]; then
     echo "  Certificates already exist"
 else
@@ -144,15 +112,15 @@ TRAEFIK
     fi
 fi
 
-# Step 5: Build and start
-echo -e "${GREEN}[5/6]${NC} Building and starting containers..."
+# Step 4: Build, start, and update paths
+echo -e "${GREEN}[4/4]${NC} Building and starting containers..."
 cd "$PROJECT_DIR"
 docker compose up -d --build
 
-# Step 6: Update bind mount paths in managed container configs
+# Update bind mount paths in managed container configs
 # The DB stores absolute host paths in container_config.HostConfig.Binds.
 # These are baked in at seed/install time. If the project moved, they're stale.
-echo -e "${GREEN}[6/6]${NC} Updating managed container bind paths in database..."
+echo "  Updating managed container bind paths in database..."
 sleep 10  # wait for MySQL to be healthy
 
 # Find the old storage path from any existing bind mount in the DB

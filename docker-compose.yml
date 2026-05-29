@@ -13,7 +13,7 @@ name: project-nomad
 
 services:
   traefik:
-    image: traefik:v3.3
+    image: traefik:v2.11
     container_name: nomad_traefik
     restart: unless-stopped
     command:
@@ -86,7 +86,7 @@ services:
       - MYSQL_USER=nomad_user
       - MYSQL_PASSWORD=nomad_local_pass
     volumes:
-      - nomad-mysql:/var/lib/mysql
+      - ${NOMAD_STORAGE_PATH:-/opt/project-nomad/storage}/mysql:/var/lib/mysql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 30s
@@ -117,9 +117,3 @@ services:
       - DOZZLE_ENABLE_ACTIONS=false
       - DOZZLE_ENABLE_SHELL=false
 
-volumes:
-  nomad-mysql:
-    name: project-nomad_nomad-mysql
-    external: true
-  nomad-nominatim:
-    name: project-nomad_nomad-nominatim
